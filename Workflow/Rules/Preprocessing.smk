@@ -181,7 +181,7 @@ rule demultiplex:
         process_radtags \
             -1 {input.filtered1} \
             -2 {input.filtered2} \
-            -b {output.barcodefilefiltered} \
+            -b {input.barcodefilefiltered} \
             -o {output.tmpdir} \
             -r \
             --inline_inline \
