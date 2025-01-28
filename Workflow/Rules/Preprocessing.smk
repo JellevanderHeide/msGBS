@@ -35,6 +35,10 @@ rule deduplicate_trim:
        "../Benchmarks/deduplicate_trim.benchmark_{run}.tsv"
     conda: 
         "../Envs/deduplication.yaml"
+    resources:
+        mem_mb= 10000,
+        runtime= 120,
+        cpus_per_task= 8
     threads: 
         8
     shell:
@@ -73,7 +77,7 @@ rule deduplicate_trim:
 #             was removed from this version of the file to optimize data-extraction and reproducability.
 #           - The demultiplexed read files 
 #             [NOTE]As stated above, these files are not directly mentioned as output in the rule definition.
-rule split_barcodes_demultiplex:
+rule split_barcodes:
     params:
         run="{run}",
         barcode_R1=config["barcode_R1"],
@@ -86,20 +90,21 @@ rule split_barcodes_demultiplex:
         readdir=directory(expand("{tmp_dir}/Preprocessing/Demultiplexed", tmp_dir=config["tmp_dir"]))
     input:
         barcodefile=expand("{input}/{barcodes}", input=config["input_dir"], barcodes=config["barcode_file"]),
-        filtered1=expand("{tmp_dir}/Preprocessing/Deduplicated/{{run}}_R1.fq.gz", tmp_dir=config["tmp_dir"]),
-        filtered2=expand("{tmp_dir}/Preprocessing/Deduplicated/{{run}}_R2.fq.gz", tmp_dir=config["tmp_dir"])
     output:
         barcodefilefiltered=expand("{output_dir}/Preprocessing/Barcodesfiltered/{{run}}_barcodefiltered.tsv", output_dir=config["output_dir"]),
-        tmpdir=temp(directory(expand("{tmp_dir}/Preprocessing/Demultiplexed/{{run}}", tmp_dir=config["tmp_dir"])))
     log: 
         log1=expand("{output_dir}/Logs/Preprocessing/split_barcode_file_{{run}}.log", output_dir=config["output_dir"]),
         log2=expand("{output_dir}/Logs/Preprocessing/process_radtags_{{run}}.log", output_dir=config["output_dir"])
     benchmark: 
        "../Benchmarks/split_barcode_file.benchmark_{run}.tsv"
-    conda: 
+    resources:
+        mem_mb= 1000,
+        runtime= 2,
+        cpus_per_task= 1
+    conda:
         "../Envs/deduplication.yaml"
     threads: 
-        8
+        1
     shell:    
         """
         header=$(awk 'NR==1 {{print; exit}}' {input.barcodefile})
@@ -145,6 +150,33 @@ rule split_barcodes_demultiplex:
                 headersPassed=true
             fi
         done
+        """
+
+
+
+rule demultiplex:
+    params:
+        readdir=directory(expand("{tmp_dir}/Preprocessing/Demultiplexed", tmp_dir=config["tmp_dir"]))
+    input:
+        barcodefilefiltered=expand("{output_dir}/Preprocessing/Barcodesfiltered/{{run}}_barcodefiltered.tsv", output_dir=config["output_dir"]),
+        filtered1=expand("{tmp_dir}/Preprocessing/Deduplicated/{{run}}_R1.fq.gz", tmp_dir=config["tmp_dir"]),
+        filtered2=expand("{tmp_dir}/Preprocessing/Deduplicated/{{run}}_R2.fq.gz", tmp_dir=config["tmp_dir"])
+    output:
+        tmpdir=temp(directory(expand("{tmp_dir}/Preprocessing/Demultiplexed/{{run}}", tmp_dir=config["tmp_dir"])))
+    log: 
+        expand("{output_dir}/Logs/Preprocessing/process_radtags_{{run}}.log", output_dir=config["output_dir"])
+    benchmark: 
+       "../Benchmarks/split_barcode_file.benchmark_{run}.tsv"
+    conda: 
+        "../Envs/deduplication.yaml"
+    resources:
+        mem_mb= 10000,
+        runtime= 120,
+        cpus_per_task= 8
+    threads: 
+        8
+    shell:    
+        """
         mkdir {output.tmpdir}
         process_radtags \
             -1 {input.filtered1} \
@@ -153,13 +185,12 @@ rule split_barcodes_demultiplex:
             -o {output.tmpdir} \
             -r \
             --inline_inline \
-            --renz_1 "$ER1" \
-            --renz_2 "$ER2" \
+            --renz_1 PacI \
+            --renz_2 NsiI \
             --retain_header \
             --disable_rad_check \
-            --threads {threads} \
-            2> {log.log1}
-        mv {output.tmpdir}/process_radtags.Deduplicated.log {log.log2}
+            --threads {threads} 
+            mv {output.tmpdir}/process_radtags*.log {log}
         """
 
 # In case there number of samples exceeds the number of available barcodes, multiple runs may required, which results in multiple read-pair files
@@ -186,6 +217,10 @@ rule rename_samples:
     benchmark: 
        "../Benchmarks/rename_samples_{sample}_{readfile}.benchmark.tsv"
     #conda: NULL
+    resources:
+        mem_mb= 1000,
+        runtime= 5,
+        cpus_per_task= 1
     threads:
         1
     shell:
@@ -213,8 +248,12 @@ rule readgroup_headers:
     benchmark: 
        "../Benchmarks/headers_{sample}_{readfile}.benchmark.tsv"
     #conda: NULL
+    resources:
+        mem_mb= 1000,
+        runtime= 10,
+        cpus_per_task= 1
     threads: 
-        8
+        1
     shell:
         """
         if [ -f '{input.read}' ]; then
@@ -245,6 +284,10 @@ rule cat_all_preprocessed:
     benchmark: 
        "../Benchmarks/cat_{readfile}.benchmark.tsv"
     #conda: NULL
+    resources:
+        mem_mb= 1000,
+        runtime= 10,
+        cpus_per_task= 1
     threads: 
         1
     shell:
@@ -268,6 +311,10 @@ rule move_monos:
     benchmark: 
        "../Benchmarks/move_monos_{sample}_{readfile}.benchmark.tsv"
     #conda: NULL
+    resources:
+        mem_mb= 1000,
+        runtime= 10,
+        cpus_per_task= 1
     threads: 
         1
     shell:
